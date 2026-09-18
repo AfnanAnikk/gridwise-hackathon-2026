@@ -60,9 +60,10 @@ def solve_energy_schedule(
     discharge_vars = [pulp.LpVariable(f"discharge_{h}", lowBound=0.0) for h in range(24)]
     energy_after_vars = [pulp.LpVariable(f"E_after_{h}", lowBound=min_reserve[h], upBound=battery.capacity_kwh) for h in range(24)]
     is_charging_vars = [pulp.LpVariable(f"is_charging_{h}", cat=pulp.LpBinary) for h in range(24)]
+    peak_var = pulp.LpVariable("peak_grid", lowBound=0.0)
 
-    # Objective: Minimize total electricity cost from grid
-    prob += pulp.lpSum([grid_vars[h] * hours[h].tariff_bdt_per_kwh for h in range(24)])
+    # Objective: Minimize total electricity cost from grid with tiny peak penalty for tie-breaking
+    prob += pulp.lpSum([grid_vars[h] * hours[h].tariff_bdt_per_kwh for h in range(24)]) + 1e-4 * peak_var
 
     # Constraints
     for h in range(24):
@@ -77,6 +78,9 @@ def solve_energy_schedule(
         # Rate limits and mutual exclusion of charge/discharge
         prob += charge_vars[h] <= max_charge[h] * is_charging_vars[h], f"MaxCharge_{h}"
         prob += discharge_vars[h] <= max_discharge[h] * (1 - is_charging_vars[h]), f"MaxDischarge_{h}"
+
+        # Peak grid tracking
+        prob += grid_vars[h] <= peak_var, f"PeakGrid_{h}"
 
         # Grid ceiling
         if max_grid[h] < float("inf"):

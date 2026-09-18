@@ -1,5 +1,5 @@
 # GridWise: LLM-Assisted Smart Campus Energy Optimizer
-**BUP CSE FEST 2026 Hackathon — Preliminary Round**
+**BUP CSE FEST 2026 Hackathon — Online Preliminary Round**
 
 A production-grade, mathematically optimal energy scheduling API service for smart campuses. The system parses natural-language operator directives using an LLM, sanitizes and validates constraints with deterministic guardrails, and solves 24-hour campus cost minimization using Linear Programming (LP).
 
@@ -27,7 +27,7 @@ The system operates as a strict 4-stage pipeline:
                                    [4. Response JSON] (Exact Canonical Schema)
 ```
 
-- **LLM Role**: Mandatory extraction of `operator_notes` into machine-checkable structured directives (`directive_type`, `hours`, `structured_adjustment`).
+- **LLM Role**: Mandatory extraction of `operator_notes` into machine-checkable structured directives (`directive_type`, `hours`, `structured_adjustment`). Uses Gemini Flash with OpenAI and Groq fallbacks.
 - **Guardrails**: Deterministic normalization that prevents hallucinated parameters, ensures whole-hour convention compliance (start included, end excluded), and validates numeric limits.
 - **Optimizer**: Solves 24-hour cost minimization to provable mathematical optimality using PuLP / CBC solver in `< 20ms`.
 - **Battery Rules**: Enforces hourly rate limits, capacity bounds, dynamic directive reserves, and end-of-day neutrality ($E_{23} = E_{\text{init}}$).
@@ -36,15 +36,13 @@ The system operates as a strict 4-stage pipeline:
 
 ## 2. Environment Variables & Model Configuration
 
-The service supports zero-configuration local runs, as well as production LLM providers:
-
 | Environment Variable | Description | Default / Fallback |
 | :--- | :--- | :--- |
-| `GEMINI_API_KEY` | Google Gemini API key (uses `gemini-2.5-flash` / `gemini-1.5-flash`) | Optional (Recommended) |
-| `OPENAI_API_KEY` | OpenAI API key (uses `gpt-4o-mini`) | Optional |
-| `GROQ_API_KEY` | Groq API key (uses `llama-3.3-70b-versatile`) | Optional |
+| `GEMINI_API_KEY` | Google Gemini API key (Primary: Gemini Flash) | Required |
+| `OPENAI_API_KEY` | OpenAI API key (`gpt-4o-mini`) | Secondary Fallback |
+| `GROQ_API_KEY` | Groq API key (`llama-3.3-70b-versatile`) | Tertiary Fallback |
 
-> **Secret Handling Notice**: Never bake secrets or API keys into Docker images or git repositories. The service cleanly reads keys from system environment variables at runtime. If no external key is present, the built-in deterministic heuristic engine operates offline to ensure zero crashes and reliable execution.
+> **Secret Handling Notice**: Never bake secrets or API keys into Docker images or git repositories. The service cleanly reads keys from system environment variables at runtime.
 
 ---
 
@@ -57,8 +55,8 @@ The service supports zero-configuration local runs, as well as production LLM pr
 ### Installation & Execution
 ```bash
 # 1. Clone repository
-git clone <YOUR_REPO_URL>
-cd gridwise
+git clone https://github.com/AfnanAnikk/gridwise-hackathon-2026.git
+cd gridwise-hackathon-2026
 
 # 2. Create and activate virtual environment
 python3 -m venv venv
@@ -67,7 +65,7 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 # 3. Install dependencies
 pip install -r requirements.txt
 
-# 4. (Optional) Set your preferred LLM API key
+# 4. Set your LLM API key
 export GEMINI_API_KEY="your_api_key_here"
 
 # 5. Start the service
@@ -96,44 +94,52 @@ curl -s -X POST http://localhost:8000/optimize-energy \
 
 ---
 
-## 5. Running the Test Suite
+## 5. Running the Official Public Benchmark & Judge Harness
 
 ```bash
-pytest test_service.py -v
+# Run against local server:
+python judge_simulator.py http://localhost:8000
+
+# Run against deployed live endpoint:
+python judge_simulator.py https://gridwise-api.onrender.com
 ```
-The test suite automatically verifies:
-1. Health endpoint readiness (`GET /health`).
-2. Exact Pydantic schema validation for `POST /optimize-energy`.
-3. Strict hourly energy balance ($\text{grid} + \text{solar\_used} + \text{discharge} = \text{demand} + \text{charge}$).
-4. Battery state transition consistency and rate limits.
-5. End-of-day battery neutrality ($E_{23} == E_{\text{init}}$).
-6. Paraphrase robustness for operator notes and distractor filtering (`no_op`).
-7. Malformed request error handling (HTTP 400).
+
+The harness runs all 10 official benchmark cases from `official_sample_cases.json` and evaluates:
+1. Health readiness (`GET /health`)
+2. Directive interpretation correctness across all 5 directive types + `no_op` distractors
+3. Physical energy constraints (energy balance, rate limits, capacity bounds, battery neutrality)
+4. Cost optimization ratio against organizer reference schedules
+5. P95 latency and reliability
 
 ---
 
-## 6. Docker Fallback Instructions
+## 6. Docker Fallback Image Instructions
 
-The service is fully containerized and can be pulled and run anywhere:
+The service is fully containerized and published to GitHub Container Registry (GHCR):
 
-### Build & Run Locally
+- **Image Registry**: `ghcr.io/afnananikk/gridwise-hackathon-2026:latest`
+- **Exposed Port**: `8000` (binds to `0.0.0.0`)
+- **Required Environment Variable**: `GEMINI_API_KEY`
+
+### Pull and Run Command
 ```bash
-# Build docker image
-docker build -t gridwise-service:latest .
+# Pull the fallback container image
+docker pull ghcr.io/afnananikk/gridwise-hackathon-2026:latest
 
-# Run container (exposes port 8000, binds to 0.0.0.0)
+# Run the container
 docker run -d -p 8000:8000 \
-  -e GEMINI_API_KEY="your_optional_api_key" \
-  --name gridwise-app gridwise-service:latest
+  -e GEMINI_API_KEY="your_api_key_here" \
+  --name gridwise-app \
+  ghcr.io/afnananikk/gridwise-hackathon-2026:latest
 
-# Verify health inside container
+# Test health check
 curl -s http://localhost:8000/health
 ```
 
-### Docker Hub / Registry Pull Command
+### Build Locally (Optional)
 ```bash
-docker pull <DOCKER_USERNAME>/gridwise-service:latest
-docker run -d -p 8000:8000 <DOCKER_USERNAME>/gridwise-service:latest
+docker build -t gridwise-service:latest .
+docker run -d -p 8000:8000 -e GEMINI_API_KEY="your_api_key_here" gridwise-service:latest
 ```
 
 ---
@@ -142,6 +148,6 @@ docker run -d -p 8000:8000 <DOCKER_USERNAME>/gridwise-service:latest
 
 - **Web Framework**: FastAPI 0.110+, Uvicorn
 - **Validation**: Pydantic v2
-- **Mathematical Solver**: PuLP 2.8+ (with COIN-OR CBC solver) & SciPy
-- **LLM Clients**: `google-genai` (Gemini Flash), `openai` (OpenAI / Groq)
-- **Known Limitations**: Scenarios must have feasible ground-truth constraints as guaranteed by the challenge specification.
+- **Mathematical Solver**: PuLP 2.8+ (COIN-OR CBC MILP solver)
+- **LLM Clients**: `google-genai` / Google Generative Language REST API (Gemini Flash), `openai` (OpenAI / Groq)
+- **Known Limitations**: Scenarios must have feasible ground-truth constraints as guaranteed by the official challenge specification.

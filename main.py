@@ -53,7 +53,7 @@ async def optimize_energy(payload: OptimizeRequest):
     """
     try:
         # Step 1: Interpret operator notes
-        raw_directives = interpret_operator_notes(payload.operator_notes)
+        raw_directives = interpret_operator_notes(payload.operator_notes, battery=payload.battery)
 
         # Step 2: Pass through deterministic guardrails
         validated_directives = guardrail_directives(

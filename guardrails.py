@@ -75,8 +75,12 @@ def validate_and_sanitize_directive(
 
     elif directive_type == "minimum_battery_reserve":
         raw_min = raw_adj.get("minimum_energy_kwh")
+        if raw_min is None:
+            raw_min = raw_adj.get("factor") or raw_adj.get("percentage")
         try:
             min_energy = float(raw_min)
+            if 0.0 < min_energy <= 1.0 and battery.capacity_kwh > 1.0:
+                min_energy = min_energy * battery.capacity_kwh
             min_energy = max(0.0, min(battery.capacity_kwh, min_energy))
         except (TypeError, ValueError):
             min_energy = battery.minimum_energy_kwh
