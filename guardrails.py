@@ -1,5 +1,4 @@
-import math
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional
 from schemas import DirectiveInterpretationEntry, DirectiveType, BatteryInput
 
 ALLOWED_DIRECTIVES = {
@@ -92,8 +91,7 @@ def validate_and_sanitize_directive(
             max_grid = 0.0
         sanitized_adj["max_grid_kwh"] = round(max_grid, 4)
 
-    elif directive_type in ("no_charge_window", "no_discharge_window"):
-        pass
+        # no_charge_window and no_discharge_window: hours already set, nothing else needed
 
     return DirectiveInterpretationEntry(
         note_index=note_idx,

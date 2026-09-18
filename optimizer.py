@@ -1,4 +1,4 @@
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple
 import pulp
 from schemas import OptimizeRequest, DirectiveInterpretationEntry, HourlyPlanEntry
 
@@ -94,12 +94,6 @@ def solve_energy_schedule(
     # Solve using default solver silently
     solver = pulp.PULP_CBC_CMD(msg=False, timeLimit=10)
     prob.solve(solver)
-
-    status_str = pulp.LpStatus[prob.status]
-    if status_str not in ("Optimal", "Feasible"):
-        # Fallback without binary mutual exclusion if solver had an issue
-        # Note: Organizer guarantees valid scoring scenarios are feasible
-        pass
 
     # 3. Extract solution and build hourly_plan
     hourly_plan: List[HourlyPlanEntry] = []
