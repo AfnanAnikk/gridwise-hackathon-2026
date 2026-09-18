@@ -17,7 +17,7 @@ A production-grade, mathematically optimal energy scheduling API service for sma
 
 ## 2. Architecture Overview
 
-The system operates as a strict 4-stage pipeline:
+The system operates as a strict 3-stage pipeline:
 
 ```
 [Request JSON: 24h demand, solar, tariff, battery specs, operator notes]
@@ -158,9 +158,9 @@ curl -s -X POST http://localhost:8000/optimize-energy \
     }
     // ... 23 more hourly entries ...
   ],
-  "total_grid_kwh": 2720.0,
-  "total_cost_bdt": 38400.0,
-  "peak_grid_kwh": 180.0,
+  "total_grid_kwh": 3073.0,
+  "total_cost_bdt": 25200.5,
+  "peak_grid_kwh": 230.0,
   "plan_summary": "Successfully scheduled 24h campus load with 2 applied directive(s) (solar_reduction, no_charge_window). Minimized peak tariff imports and preserved battery neutrality."
 }
 ```
