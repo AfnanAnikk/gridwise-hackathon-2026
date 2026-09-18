@@ -84,7 +84,7 @@ def call_gemini_api(notes: List[str], api_key: str) -> Optional[List[Dict[str, A
         client = genai.Client(api_key=api_key)
         prompt = f"Operator notes to interpret:\n{json.dumps(notes, indent=2)}"
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-2.0-flash",
             contents=f"{PROMPT_SYSTEM}\n\n{prompt}",
             config={"response_mime_type": "application/json"}
         )
