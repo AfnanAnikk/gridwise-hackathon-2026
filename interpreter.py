@@ -107,7 +107,27 @@ def call_gemini_api(notes: List[str], api_key: str) -> Optional[List[Dict[str, A
             if response and response.text:
                 return extract_json_array(response.text)
         except Exception as e2:
-            logger.error(f"Gemini API call failed: {e2}")
+            logger.error(f"Gemini SDK call failed: {e2}")
+
+    # Direct Google REST endpoint fallback (guaranteed compatibility)
+    try:
+        import requests
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+        payload = {
+            "contents": [{"parts": [{"text": f"{PROMPT_SYSTEM}\n\nOperator notes to interpret:\n{json.dumps(notes)}"}]}],
+            "generationConfig": {"response_mime_type": "application/json"}
+        }
+        resp = requests.post(url, json=payload, timeout=12)
+        if resp.status_code == 200:
+            candidates = resp.json().get("candidates", [])
+            if candidates:
+                text = candidates[0]["content"]["parts"][0]["text"]
+                return extract_json_array(text)
+        else:
+            logger.error(f"Gemini REST returned {resp.status_code}: {resp.text}")
+    except Exception as e3:
+        logger.error(f"Gemini direct REST call failed: {e3}")
+
     return None
 
 def call_openai_compatible_api(

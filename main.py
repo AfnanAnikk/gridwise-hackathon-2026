@@ -95,7 +95,7 @@ async def optimize_energy(payload: OptimizeRequest):
         logger.error(f"Error processing scenario {payload.scenario_id}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Controlled internal error during optimization processing."
+            detail=f"Controlled internal error: {str(e)}"
         )
 
 if __name__ == "__main__":
