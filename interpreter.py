@@ -82,32 +82,32 @@ def extract_json_array(text: str) -> Optional[List[Dict[str, Any]]]:
     return None
 
 def call_gemini_api(notes: List[str], api_key: str) -> Tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
-    last_err = None
-    # List of models to try in order
-    models_to_try = ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-1.5-flash"]
-    
-    # 1. Try google-genai SDK
-    for m in models_to_try:
-        try:
-            from google import genai
-            client = genai.Client(api_key=api_key)
-            prompt = f"Operator notes to interpret:\n{json.dumps(notes, indent=2)}"
-            response = client.models.generate_content(
-                model=m,
-                contents=f"{PROMPT_SYSTEM}\n\n{prompt}",
-                config={"response_mime_type": "application/json"}
-            )
-            if response and response.text:
-                extracted = extract_json_array(response.text)
-                if extracted:
-                    return extracted, None
-        except Exception as e:
-            last_err = f"SDK {m} error: {str(e)}"
-            logger.warning(last_err)
-
-    # 2. Try direct Google REST endpoint
     import requests
-    for m in models_to_try:
+    last_err = None
+
+    # Step 1: Dynamically ask Google which models are active for this key
+    active_models = []
+    try:
+        list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+        list_res = requests.get(list_url, timeout=8)
+        if list_res.status_code == 200:
+            for m_obj in list_res.json().get("models", []):
+                methods = m_obj.get("supportedGenerationMethods", [])
+                if "generateContent" in methods:
+                    m_name = m_obj.get("name", "").replace("models/", "")
+                    if "flash" in m_name.lower():
+                        active_models.insert(0, m_name)
+                    else:
+                        active_models.append(m_name)
+    except Exception as e_list:
+        logger.warning(f"ListModels failed: {e_list}")
+
+    if not active_models:
+        active_models = ["gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-1.5-flash", "gemini-pro"]
+
+    # Step 2: Try models in priority order
+    for m in active_models:
+        # A. Try REST endpoint
         try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={api_key}"
             payload = {
@@ -123,13 +123,28 @@ def call_gemini_api(notes: List[str], api_key: str) -> Tuple[Optional[List[Dict[
                     if extracted:
                         return extracted, None
             else:
-                last_err = f"REST {m} HTTP {resp.status_code}: {resp.text}"
-                logger.error(last_err)
-        except Exception as e3:
-            last_err = f"REST {m} exception: {str(e3)}"
-            logger.error(last_err)
+                last_err = f"{m} HTTP {resp.status_code}: {resp.text}"
+        except Exception as e_rest:
+            last_err = f"{m} exception: {str(e_rest)}"
 
-    return None, last_err
+        # B. Try SDK
+        try:
+            from google import genai
+            client = genai.Client(api_key=api_key)
+            prompt = f"Operator notes to interpret:\n{json.dumps(notes, indent=2)}"
+            response = client.models.generate_content(
+                model=m,
+                contents=f"{PROMPT_SYSTEM}\n\n{prompt}",
+                config={"response_mime_type": "application/json"}
+            )
+            if response and response.text:
+                extracted = extract_json_array(response.text)
+                if extracted:
+                    return extracted, None
+        except Exception as e_sdk:
+            last_err = f"{m} SDK: {str(e_sdk)}"
+
+    return None, f"All models failed. Last error: {last_err}. Checked: {active_models[:3]}"
 
 def call_openai_compatible_api(
     notes: List[str],
