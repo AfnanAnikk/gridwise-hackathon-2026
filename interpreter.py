@@ -2,7 +2,7 @@ import os
 import json
 import re
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 
 logger = logging.getLogger("gridwise-interpreter")
 
@@ -81,7 +81,9 @@ def extract_json_array(text: str) -> Optional[List[Dict[str, Any]]]:
             pass
     return None
 
-def call_gemini_api(notes: List[str], api_key: str) -> Optional[List[Dict[str, Any]]]:
+def call_gemini_api(notes: List[str], api_key: str) -> Tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
+    last_err = None
+    # 1. Try google-genai SDK
     try:
         from google import genai
         client = genai.Client(api_key=api_key)
@@ -92,24 +94,14 @@ def call_gemini_api(notes: List[str], api_key: str) -> Optional[List[Dict[str, A
             config={"response_mime_type": "application/json"}
         )
         if response and response.text:
-            return extract_json_array(response.text)
+            extracted = extract_json_array(response.text)
+            if extracted:
+                return extracted, None
     except Exception as e:
-        logger.warning(f"gemini-2.0-flash failed, trying gemini-1.5-flash: {e}")
-        try:
-            from google import genai
-            client = genai.Client(api_key=api_key)
-            prompt = f"Operator notes to interpret:\n{json.dumps(notes, indent=2)}"
-            response = client.models.generate_content(
-                model="gemini-1.5-flash",
-                contents=f"{PROMPT_SYSTEM}\n\n{prompt}",
-                config={"response_mime_type": "application/json"}
-            )
-            if response and response.text:
-                return extract_json_array(response.text)
-        except Exception as e2:
-            logger.error(f"Gemini SDK call failed: {e2}")
+        last_err = f"SDK gemini-2.0-flash error: {str(e)}"
+        logger.warning(last_err)
 
-    # Direct Google REST endpoint fallback (guaranteed compatibility)
+    # 2. Try direct Google REST endpoint
     try:
         import requests
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
@@ -122,13 +114,17 @@ def call_gemini_api(notes: List[str], api_key: str) -> Optional[List[Dict[str, A
             candidates = resp.json().get("candidates", [])
             if candidates:
                 text = candidates[0]["content"]["parts"][0]["text"]
-                return extract_json_array(text)
+                extracted = extract_json_array(text)
+                if extracted:
+                    return extracted, None
         else:
-            logger.error(f"Gemini REST returned {resp.status_code}: {resp.text}")
+            last_err = f"REST returned HTTP {resp.status_code}: {resp.text}"
+            logger.error(last_err)
     except Exception as e3:
-        logger.error(f"Gemini direct REST call failed: {e3}")
+        last_err = f"REST exception: {str(e3)}"
+        logger.error(last_err)
 
-    return None
+    return None, last_err
 
 def call_openai_compatible_api(
     notes: List[str],
@@ -161,23 +157,32 @@ def interpret_operator_notes(notes: List[str]) -> List[Dict[str, Any]]:
     Invokes generative language model (Gemini 2.0 Flash or OpenAI GPT-4o-mini)
     to convert unstructured operator notes into structured directives.
     """
+    diag = []
+
     # 1. Primary: Google Gemini 2.0 Flash
     gemini_key = os.environ.get("GEMINI_API_KEY")
     if gemini_key:
-        res = call_gemini_api(notes, gemini_key)
+        gemini_key = gemini_key.strip().strip("'").strip('"')
+        res, err = call_gemini_api(notes, gemini_key)
         if res is not None:
             return res
+        diag.append(f"Gemini failed ({err})")
+    else:
+        diag.append("GEMINI_API_KEY not found in env")
 
     # 2. Secondary: OpenAI GPT-4o-mini
     openai_key = os.environ.get("OPENAI_API_KEY")
     if openai_key:
+        openai_key = openai_key.strip().strip("'").strip('"')
         res = call_openai_compatible_api(notes, openai_key, model="gpt-4o-mini")
         if res is not None:
             return res
+        diag.append("OpenAI call failed")
 
     # 3. Tertiary: Groq
     groq_key = os.environ.get("GROQ_API_KEY")
     if groq_key:
+        groq_key = groq_key.strip().strip("'").strip('"')
         res = call_openai_compatible_api(
             notes, groq_key,
             base_url="https://api.groq.com/openai/v1",
@@ -185,8 +190,6 @@ def interpret_operator_notes(notes: List[str]) -> List[Dict[str, Any]]:
         )
         if res is not None:
             return res
+        diag.append("Groq call failed")
 
-    raise RuntimeError(
-        "LLM API key missing or LLM call failed. As per hackathon rules, "
-        "a generative language model (GEMINI_API_KEY or OPENAI_API_KEY) must be configured."
-    )
+    raise RuntimeError(f"LLM interpretation error: {'; '.join(diag)}")
