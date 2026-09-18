@@ -26,7 +26,7 @@ The system operates as a strict 4-stage pipeline:
   ┌───────────────────────────────────────────────────────────┐
   │ 1. LLM Directive Interpreter (interpreter.py)             │
   │    - Parses 1-3 natural-language operator notes           │
-  │    - Powered by Google Gemini Flash (OpenAI/Groq fallback)│
+  │    - Powered by Google Gemini Flash API                   │
   │    - Caches model discovery at startup for <1.5s latency  │
   │    - Supplies battery capacity context for % reserves     │
   └─────────────────────────────┬─────────────────────────────┘
@@ -58,11 +58,9 @@ The system operates as a strict 4-stage pipeline:
 
 ## 3. Environment Variables & Model Configuration
 
-| Environment Variable | Description | Default / Fallback |
+| Environment Variable | Description | Requirement |
 | :--- | :--- | :--- |
-| `GEMINI_API_KEY` | Google Gemini API key (Primary: Gemini Flash) | Required |
-| `OPENAI_API_KEY` | OpenAI API key (`gpt-4o-mini`) | Secondary Fallback |
-| `GROQ_API_KEY` | Groq API key (`llama-3.3-70b-versatile`) | Tertiary Fallback |
+| `GEMINI_API_KEY` | Google Gemini API key (Primary model: Gemini Flash) | Required |
 
 > **Secret Handling Notice**: Never commit API keys, tokens, `.env` files, or secrets to the repository or Docker images. The service cleanly reads keys from system environment variables at runtime and never exposes credentials, prompts, or stack traces in API responses or error logs.
 
@@ -186,14 +184,14 @@ We validated the service against all **10 official public benchmark cases** (`SA
 | **SAMPLE-09** | Reduction wording normalization | 34,873.0 | 2,504.0 | 170.0 | **100% Match** |
 | **SAMPLE-10** | Multi-constraint evening operation | 41,620.0 | 2,715.0 | 190.0 | **100% Match** |
 
-### Running the Benchmark / Judge Simulator
+### Running the Benchmark Verification Suite
 To replay all 10 scenarios against the service:
 ```bash
 # Against local instance:
-python judge_simulator.py http://localhost:8000
+python test_simulator.py http://localhost:8000
 
 # Against live deployment:
-python judge_simulator.py https://gridwise-api.onrender.com
+python test_simulator.py https://gridwise-api.onrender.com
 ```
 
 ---
@@ -241,7 +239,6 @@ Under the official rulebook policy, all third-party libraries and frameworks use
 | **PuLP** | `^2.8.0` | High-level mathematical LP/MILP formulation library |
 | **COIN-OR CBC** | System package | Industrial branch-and-cut MILP solver for provable optimality |
 | **google-genai / REST** | `^0.1.1` | Google Gemini API integration for natural language note interpretation |
-| **OpenAI / Groq** | `^1.14.0` | Secondary and tertiary fallback LLM integration |
 | **Requests** | `^2.31.0` | HTTP client for REST calls and harness evaluation |
 
 ---

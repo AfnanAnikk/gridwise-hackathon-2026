@@ -183,73 +183,24 @@ def call_gemini_api(prompt_text: str, api_key: str) -> Tuple[Optional[List[Dict[
 
     return None, f"All models failed. Last error: {last_err}. Checked: {_CACHED_ACTIVE_MODELS[:3]}"
 
-def call_openai_compatible_api(
-    prompt_text: str,
-    api_key: str,
-    base_url: Optional[str] = None,
-    model: str = "gpt-4o-mini"
-) -> Optional[List[Dict[str, Any]]]:
-    try:
-        from openai import OpenAI
-        client = OpenAI(api_key=api_key, base_url=base_url)
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": PROMPT_SYSTEM},
-                {"role": "user", "content": prompt_text}
-            ],
-            response_format={"type": "json_object"}
-        )
-        content = response.choices[0].message.content
-        if content:
-            return extract_json_array(content)
-    except Exception as e:
-        logger.error(f"OpenAI compatible API call failed: {e}")
-    return None
-
 def interpret_operator_notes(
     notes: List[str],
     battery: Optional[BatteryInput] = None
 ) -> List[Dict[str, Any]]:
     """
     Mandatory LLM interpretation path.
-    Invokes generative language model (Gemini Flash or OpenAI GPT-4o-mini)
+    Invokes Google Gemini generative language model
     to convert unstructured operator notes into structured directives.
     """
-    diag = []
     prompt_text = format_prompt_content(notes, battery)
 
-    # 1. Primary: Google Gemini
     gemini_key = os.environ.get("GEMINI_API_KEY")
-    if gemini_key:
-        gemini_key = gemini_key.strip().strip("'").strip('"')
-        res, err = call_gemini_api(prompt_text, gemini_key)
-        if res is not None:
-            return res
-        diag.append(f"Gemini failed ({err})")
-    else:
-        diag.append("GEMINI_API_KEY not found in env")
+    if not gemini_key:
+        raise RuntimeError("LLM interpretation error: GEMINI_API_KEY not found in env")
 
-    # 2. Secondary: OpenAI GPT-4o-mini
-    openai_key = os.environ.get("OPENAI_API_KEY")
-    if openai_key:
-        openai_key = openai_key.strip().strip("'").strip('"')
-        res = call_openai_compatible_api(prompt_text, openai_key, model="gpt-4o-mini")
-        if res is not None:
-            return res
-        diag.append("OpenAI call failed")
+    gemini_key = gemini_key.strip().strip("'").strip('"')
+    res, err = call_gemini_api(prompt_text, gemini_key)
+    if res is not None:
+        return res
 
-    # 3. Tertiary: Groq
-    groq_key = os.environ.get("GROQ_API_KEY")
-    if groq_key:
-        groq_key = groq_key.strip().strip("'").strip('"')
-        res = call_openai_compatible_api(
-            prompt_text, groq_key,
-            base_url="https://api.groq.com/openai/v1",
-            model="llama-3.3-70b-versatile"
-        )
-        if res is not None:
-            return res
-        diag.append("Groq call failed")
-
-    raise RuntimeError(f"LLM interpretation error: {'; '.join(diag)}")
+    raise RuntimeError(f"LLM interpretation error: Gemini failed ({err})")
