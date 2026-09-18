@@ -83,46 +83,51 @@ def extract_json_array(text: str) -> Optional[List[Dict[str, Any]]]:
 
 def call_gemini_api(notes: List[str], api_key: str) -> Tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
     last_err = None
+    # List of models to try in order
+    models_to_try = ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-1.5-flash"]
+    
     # 1. Try google-genai SDK
-    try:
-        from google import genai
-        client = genai.Client(api_key=api_key)
-        prompt = f"Operator notes to interpret:\n{json.dumps(notes, indent=2)}"
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=f"{PROMPT_SYSTEM}\n\n{prompt}",
-            config={"response_mime_type": "application/json"}
-        )
-        if response and response.text:
-            extracted = extract_json_array(response.text)
-            if extracted:
-                return extracted, None
-    except Exception as e:
-        last_err = f"SDK gemini-2.0-flash error: {str(e)}"
-        logger.warning(last_err)
-
-    # 2. Try direct Google REST endpoint
-    try:
-        import requests
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
-        payload = {
-            "contents": [{"parts": [{"text": f"{PROMPT_SYSTEM}\n\nOperator notes to interpret:\n{json.dumps(notes)}"}]}],
-            "generationConfig": {"response_mime_type": "application/json"}
-        }
-        resp = requests.post(url, json=payload, timeout=12)
-        if resp.status_code == 200:
-            candidates = resp.json().get("candidates", [])
-            if candidates:
-                text = candidates[0]["content"]["parts"][0]["text"]
-                extracted = extract_json_array(text)
+    for m in models_to_try:
+        try:
+            from google import genai
+            client = genai.Client(api_key=api_key)
+            prompt = f"Operator notes to interpret:\n{json.dumps(notes, indent=2)}"
+            response = client.models.generate_content(
+                model=m,
+                contents=f"{PROMPT_SYSTEM}\n\n{prompt}",
+                config={"response_mime_type": "application/json"}
+            )
+            if response and response.text:
+                extracted = extract_json_array(response.text)
                 if extracted:
                     return extracted, None
-        else:
-            last_err = f"REST returned HTTP {resp.status_code}: {resp.text}"
+        except Exception as e:
+            last_err = f"SDK {m} error: {str(e)}"
+            logger.warning(last_err)
+
+    # 2. Try direct Google REST endpoint
+    import requests
+    for m in models_to_try:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={api_key}"
+            payload = {
+                "contents": [{"parts": [{"text": f"{PROMPT_SYSTEM}\n\nOperator notes to interpret:\n{json.dumps(notes)}"}]}],
+                "generationConfig": {"response_mime_type": "application/json"}
+            }
+            resp = requests.post(url, json=payload, timeout=12)
+            if resp.status_code == 200:
+                candidates = resp.json().get("candidates", [])
+                if candidates:
+                    text = candidates[0]["content"]["parts"][0]["text"]
+                    extracted = extract_json_array(text)
+                    if extracted:
+                        return extracted, None
+            else:
+                last_err = f"REST {m} HTTP {resp.status_code}: {resp.text}"
+                logger.error(last_err)
+        except Exception as e3:
+            last_err = f"REST {m} exception: {str(e3)}"
             logger.error(last_err)
-    except Exception as e3:
-        last_err = f"REST exception: {str(e3)}"
-        logger.error(last_err)
 
     return None, last_err
 
